@@ -1,3 +1,8 @@
+# NOTE
+This library only supports Intuit API V2 - If you're looking for Intuit V3 support then you need to use
+my other library: [quickbooks-ruby](https://github.com/ruckus/quickbooks-ruby)
+
+
 # Quickeebooks
 
 Integration with Quickbooks Online via the Intuit Data Services REST API.
@@ -5,9 +10,6 @@ Integration with Quickbooks Online via the Intuit Data Services REST API.
 This library communicates with the Quickbooks Data Services `v2` API, documented at:
 
 [Data Services v2](https://ipp.developer.intuit.com/0010_Intuit_Partner_Platform/0050_Data_Services)
-
-When Intuit finalizes the `v3` API I would like to move to that version as it appears to be better structured
-and has `JSON` request/response formats, which should be easier to work with than XML.
 
 [![Build Status](https://travis-ci.org/ruckus/quickeebooks.png)](https://travis-ci.org/ruckus/quickeebooks)
 
@@ -80,6 +82,79 @@ def oauth_callback
 	# store the token, secret & RealmID somewhere for this user, you will need all 3 to work with Quickeebooks
 end
 ```
+:star: Also, check out regular Quickeebooks contributor, <a href="https://github.com/minimul" target="_blank">minimul</a>'s, article [Get started integrating Rails 4 and QuickBooks Online with the Quickeebooks Gem](http://minimul.com/get-started-integrating-rails-4-and-quickbooks-online-with-the-quickeebooks-gem-part-1.html) for a step-by-step guide.
+
+
+## BlueDot / MenuProxy
+
+In the Javascript embed:
+
+```HTML
+<script>
+intuit.ipp.anywhere.setup({menuProxy: '/path/to/blue-dot', grantUrl: '/path/to/your-flow-start'});
+</script>
+```
+
+You need to refer to 2 variables: `menuProxy` and `grantUrl`.
+
+### BlueDot
+
+`menuProxy` is the route in your app which fetches the BlueDot menu contents from Intuit. This is an
+authenticated call against Intuit with active OAuth tokens. You need to cache the results of the BlueDot contents
+after you fetch it from Intuit.
+
+Example implemenation:
+
+```HTML
+<script>
+intuit.ipp.anywhere.setup({menuProxy: '/intuit/blue-dot', grantUrl: '/intuit/authenticate'});
+</script>
+```
+
+```ruby
+
+# config/routes.rb
+get '/intuit/blue-dot' => 'intuit#bluedot'
+
+# app/controllers/intuit_controller.rb
+class IntuitController < ApplicationController
+  def bluedot
+    intuit_account = IntuitAccount.find("...")
+
+    unless intuit_account
+      render(:text => "You are not connected to Intuit.") and return
+    end
+
+    html = Rails.cache.read("your user-specific cache key")
+    if !html.blank?
+      render(:text => html) and return
+    end
+
+    # nope, contact Intuit
+    access_token = intuit_account.access_token
+    access_secret = intuit_account.access_secret
+    consumer = OAuth::AccessToken.new($qb_oauth_consumer, access_token, access_secret)
+    response = consumer.request(:get, "https://appcenter.intuit.com/api/v1/Account/AppMenu")
+    if response && response.body
+      html = response.body
+
+      # cache this if we have a valid IntuitAccount
+      if intuit_account
+        Rails.cache.write("your user-specific cache key", html)
+      end
+      render(:text => html) and return
+    else
+      Rails.logger.info("Error fetching Intuit Menu proxy code: #{response.inspect}")
+    end
+    render(:text => "error") and return
+  end
+
+end
+```
+
+### GrantUrl
+
+Is your route to the `oauth_callback` action.
 
 ## Creating an OAuth Access Token
 
@@ -319,7 +394,7 @@ customer_service.list
 
 customer = Quickeebooks::Online::Model::Customer.new
 customer.name = "Richard Parker"
-customer.email = "richard@example.org"
+customer.email_address = "richard@example.org"
 customer_service.create(customer)
 ```
 
@@ -337,7 +412,7 @@ customer_service.list
 
 customer = customer_service.fetch_by_id(100)
 customer.name = "Richard Parker"
-customer.email = "richard@example.org"
+customer.email_address = "richard@example.org"
 customer_service.update(customer)
 ```
 
@@ -357,56 +432,60 @@ As of `0.1.9` the supported Service operations are:
 
 ### Quickbooks Online
 
-Entity | Create | Update | List | Delete | Fetch by ID | Other
---- | --- | --- | --- | --- | --- | ---
-Account | yes | yes | yes | yes | yes 
-Bill | yes | yes | yes | yes | yes 
-Bill Payment | yes | yes | yes | yes | yes 
-Class | yes | yes | yes | yes | yes 
-Company Meta Data | no | no | no | no | no | `load`
-Customer | yes | yes | yes | yes | yes | 
-Employee | yes | yes | yes | yes | yes | 
-Entitlement | n/a | n/a | n/a | n/a | n/a | `status`
-Invoice | yes | yes | yes | yes | yes | `invoice_as_pdf`
-Item | yes | yes | yes | yes | yes | 
-Journal Entry | yes | yes | yes | yes | yes | 
-Payment | yes | yes | yes | yes | yes | 
-Payment Method | no | no | no | no | no | 
-Sales Receipt | yes | yes | yes | yes | yes | 
-Sales Rep | no | no | no | no | no | 
-Sales Tax | no | no | no | no | no | 
-Ship Method | no | no | no | no | no | 
-Sync Activity | n/a | n/a | n/a | n/a | n/a | 
-Sync Status | n/a | n/a | n/a | n/a | n/a | 
-Time Activity | yes | yes | yes | yes | yes | 
-Tracking Class | yes | yes | yes | yes | yes | 
-Vendor | yes | yes | yes | yes | yes | 
+Entity            | Create | Update | List | Delete | Fetch by ID | Other
+---               | ---    | ---    | ---  | ---    | ---         | ---
+Account           | yes    | yes    | yes  | yes    | yes
+Bill              | yes    | yes    | yes  | yes    | yes
+Bill Payment      | yes    | yes    | yes  | yes    | yes
+Class             | yes    | yes    | yes  | yes    | yes
+Company Meta Data | no     | no     | no   | no     | no          | `load`
+Credit Memo       | n/a    | n/a    | n/a  | n/a    | n/a         |
+Customer          | yes    | yes    | yes  | yes    | yes         |
+Employee          | yes    | yes    | yes  | yes    | yes         |
+Entitlement       | n/a    | n/a    | n/a  | n/a    | n/a         | `status`
+Invoice           | yes    | yes    | yes  | yes    | yes         | `invoice_as_pdf`
+Item              | yes    | yes    | yes  | yes    | yes         |
+Journal Entry     | yes    | yes    | yes  | yes    | yes         |
+Job               | yes    | yes    | yes  | yes    | yes         |
+Payment           | yes    | yes    | yes  | yes    | yes         |
+Payment Method    | no     | no     | no   | no     | no          |
+Sales Receipt     | yes    | yes    | yes  | yes    | yes         |
+Sales Rep         | no     | no     | no   | no     | no          |
+Sales Tax         | no     | no     | no   | no     | no          |
+Sales Term        | yes    | yes    | yes  | yes    | yes         |
+Ship Method       | no     | no     | no   | no     | no          |
+Sync Activity     | n/a    | n/a    | n/a  | n/a    | n/a         |
+Sync Status       | n/a    | n/a    | n/a  | n/a    | n/a         |
+Time Activity     | yes    | yes    | yes  | yes    | yes         |
+Tracking Class    | yes    | yes    | yes  | yes    | yes         |
+Vendor            | yes    | yes    | yes  | yes    | yes         |
 
 ### Quickbooks Windows / Desktop
 
-Entity | Create | Update | List | Delete | Fetch by ID | Other
---- | --- | --- | --- | --- | --- | ---
-Account | no | no | yes | no | no 
-Bill | no | no | no | no | no
-Bill Payment | no | no | no | no | no
-Company Meta Data | no | no | no | no | no | `load`
-Customer | yes | yes | yes | no | yes | 
-Employee | no | no | yes | no | no | 
-Entitlement | n/a | n/a | n/a | n/a | n/a | 
-Invoice | yes | yes | yes | no | yes | 
-Item | yes | no | yes | no | yes | 
-Journal Entry | no | no | no | no | no | 
-Payment | yes | no | yes | no | yes | 
-Payment Method | no | no | yes | no | no | 
-Sales Receipt | yes | no | yes | no | no | 
-Sales Rep | no | no | yes | no | no | 
-Sales Tax | no | no | yes | no | no | 
-Ship Method | no | no | yes | no | no | 
-Sync Activity | no | no | no | no | no | `retrieve`
-Sync Status | no | no | no | no | no | `retrieve`
-Time Activity | no | no | yes | no | no | 
-Tracking Class | n/a | n/a | n/a | n/a | n/a | 
-Vendor | no | no | no | no | no |
+Entity            | Create | Update | List | Delete | Fetch by ID | Other
+---               | ---    | ---    | ---  | ---    | ---         | ---
+Account           | yes    | no     | yes  | no     | yes
+Bill              | no     | no     | no   | no     | no
+Bill Payment      | no     | no     | no   | no     | no
+Company Meta Data | no     | no     | no   | no     | no          | `load`
+Credit Memo       | yes    | yes    | yes  | no     | yes         |
+Customer          | yes    | yes    | yes  | no     | yes         |
+Employee          | yes    | no     | yes  | no     | no          |
+Entitlement       | n/a    | n/a    | n/a  | n/a    | n/a         |
+Invoice           | yes    | yes    | yes  | no     | yes         |
+Item              | yes    | no     | yes  | no     | yes         |
+Journal Entry     | no     | no     | no   | no     | no          |
+Payment           | yes    | no     | yes  | no     | yes         |
+Payment Method    | no     | no     | yes  | no     | no          |
+Sales Receipt     | yes    | yes    | yes  | no     | yes         |
+Sales Rep         | no     | no     | yes  | no     | no          |
+Sales Tax         | no     | no     | yes  | no     | no          |
+Ship Method       | yes    | no     | yes  | no     | no          |
+Sync Activity     | no     | no     | no   | no     | no          | `retrieve`
+Sync Status       | no     | no     | no   | no     | no          | `retrieve`
+Time Activity     | yes    | no     | yes  | no     | no          |
+Tracking Class    | n/a    | n/a    | n/a  | n/a    | n/a         |
+Vendor            | no     | no     | no   | no     | no          |
 
 
 ## Invoice Service

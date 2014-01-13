@@ -7,15 +7,15 @@ module Quickeebooks
     module Model
       class Account < Quickeebooks::Windows::Model::IntuitType
         include ActiveModel::Validations
-        
+
         XML_COLLECTION_NODE = 'Accounts'
         XML_NODE = 'Account'
-        
+
         # https://services.intuit.com/sb/account/v2/<realmID>
         REST_RESOURCE = "account"
-        
+
         xml_convention :camelcase
-        xml_accessor :id, :from => 'Id'
+        xml_accessor :id, :from => 'Id', :as => Quickeebooks::Windows::Model::Id
         xml_accessor :sync_token, :from => 'SyncToken', :as => Integer
         xml_accessor :meta_data, :from => 'MetaData', :as => Quickeebooks::Windows::Model::MetaData
         xml_accessor :external_key, :from => 'ExternalKey'
@@ -55,9 +55,9 @@ module Quickeebooks
           return false if(id.nil? || sync_token.nil?)
           id.to_i > 0 && !sync_token.to_s.empty? && sync_token.to_i >= 0
         end
-        
+
         private
-        
+
         def ensure_name_is_valid
           if name.nil?
             errors.add(:name, "Missing required attribute: name")
